@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
 @Slf4j
@@ -23,6 +24,8 @@ public class DealsPipelineScheduler {
     private final ValidationService validationService;
     private final TelegramPublisherService telegramPublisherService;
     private final PostRepository postRepository;
+
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     public DealsPipelineScheduler(ProductDiscoveryService productDiscoveryService,
                                   PriceTrackingService priceTrackingService,
@@ -40,36 +43,44 @@ public class DealsPipelineScheduler {
 
     @Scheduled(cron = "${deals.scheduler.cron}")
     public void runPipeline() {
-        log.info("Pipeline started");
-
-        List<DiscoveredProduct> products = productDiscoveryService.discoverAll();
-        int published = 0;
-
-        for (DiscoveredProduct product : products) {
-            try {
-                priceTrackingService.saveProduct(product);
-                priceTrackingService.recordPrice(product);
-
-                if (!validationService.isValid(product)) continue;
-
-                if (wasRecentlyPosted(product.getAsin())) continue;
-
-                Optional<BigDecimal> historicalLow = priceTrackingService.getHistoricalLow(product.getAsin());
-                int score = scoringService.score(product, historicalLow);
-
-                if (score < 70) continue;
-
-                int discountPercent = scoringService.discountPercent(product);
-                telegramPublisherService.publish(product, discountPercent);
-                savePost(product);
-                published++;
-
-            } catch (Exception e) {
-                log.error("Error processing ASIN {}: {}", product.getAsin(), e.getMessage());
-            }
+        if (!running.compareAndSet(false, true)) {
+            log.warn("Pipeline already running — skipping this execution");
+            return;
         }
+        try {
+            log.info("Pipeline started");
+            List<DiscoveredProduct> products = productDiscoveryService.discoverAll();
+            int published = 0;
 
-        log.info("Pipeline complete — processed {}, published {}", products.size(), published);
+            for (DiscoveredProduct product : products) {
+                try {
+                    priceTrackingService.saveProduct(product);
+
+                    if (!validationService.isValid(product)) continue;
+
+                    priceTrackingService.recordPrice(product);
+
+                    if (wasRecentlyPosted(product.getAsin())) continue;
+
+                    Optional<BigDecimal> historicalLow = priceTrackingService.getHistoricalLow(product.getAsin());
+                    int score = scoringService.score(product, historicalLow);
+
+                    if (score < 70) continue;
+
+                    int discountPercent = scoringService.discountPercent(product);
+                    telegramPublisherService.publish(product, discountPercent);
+                    savePost(product);
+                    published++;
+
+                } catch (Exception e) {
+                    log.error("Error processing ASIN {}: {}", product.getAsin(), e.getMessage());
+                }
+            }
+
+            log.info("Pipeline complete — processed {}, published {}", products.size(), published);
+        } finally {
+            running.set(false);
+        }
     }
 
     private boolean wasRecentlyPosted(String asin) {

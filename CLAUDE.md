@@ -29,7 +29,7 @@ The goal is:
 
 The system runs continuously:
 
-1. Discover products from Amazon Australia
+1. Discover products from enabled sources
 2. Store product data
 3. Track price history over time
 4. Detect price drops
@@ -40,38 +40,51 @@ The system runs continuously:
 ## System Flow
 
 ```
-Amazon PA-API
-→ Keyword Search
-→ Normalize Products
-→ Store Products
-→ Store Price History
-→ Simple Scoring
-→ Deduplication Check
-→ Telegram Publisher
+ProductSourceClient implementations
+→ ProductDiscoveryService (aggregate + deduplicate by ASIN)
+→ PriceTrackingService (upsert product, record price)
+→ ValidationService (price + image + affiliate link)
+→ ScoringService (score ≥ 70 to qualify)
+→ TelegramPublisherService (format + send)
 ```
 
-## Data Source
+## Product Sources
 
-Primary source: Amazon Product Advertising API (PA-API)
+Product discovery is abstracted behind the `ProductSourceClient` interface (`com.ozdeals.bot.source`).
 
-## Product Discovery
+Enable or disable each source in `application.properties`:
 
-Use fixed keyword list:
+```properties
+sources.amazon.enabled=false
+sources.mock.enabled=true
+sources.awin.enabled=false
+```
 
-- iphone
-- samsung
-- sony
-- headphones
-- tv
-- laptop
-- gaming monitor
-- air fryer
-- protein
-- creatine
-- fitness
-- smartwatch
+`ProductDiscoveryService` receives the enabled sources as `List<ProductSourceClient>` via Spring injection — no conditional logic needed in the service itself.
 
-System must continuously query these keywords. No advanced discovery engine required.
+### AmazonProductSourceClient
+
+- Delegates to `AmazonPaApiClient` (rate limiting, retry, pagination)
+- Searches 12 fixed keywords; collects results into a flat list
+- Requires `AMAZON_ACCESS_KEY`, `AMAZON_SECRET_KEY`, `AMAZON_PARTNER_TAG` in environment
+- Both `AmazonProductSourceClient` and `AmazonPaApiClient` are conditional on `sources.amazon.enabled=true` — neither bean is created when Amazon is disabled, so missing env vars do not cause startup failure
+
+### MockProductSourceClient
+
+- Returns hardcoded `DiscoveredProduct` objects for local testing
+- Use when Amazon credentials are not available
+- Safe to run with no external dependencies
+
+### AwinProductSourceClient
+
+- Placeholder only — logs a warning and returns an empty list
+- Not implemented
+
+### Fixed keyword list (Amazon source)
+
+iphone, samsung, sony, headphones, tv, laptop, gaming monitor, air fryer, protein, creatine, fitness, smartwatch
+
+No advanced discovery engine required. No dynamic keyword expansion.
 
 ## Database
 
@@ -81,24 +94,15 @@ Use PostgreSQL with Spring Data JPA. No manual SQL required.
 
 **Product**
 - asin (primary key)
-- title
-- brand
-- category
-- image_url
-- created_at
+- title, brand, category, image_url, created_at
 
 **PriceHistory**
-- id
-- asin
-- price
-- timestamp
+- id, asin, price, timestamp
+- Index on `asin`
 
 **Post**
-- id
-- asin
-- price
-- posted_at
-- message_hash
+- id, asin, price, posted_at, message_hash
+- Index on `asin` and `posted_at`
 
 ## Scoring System
 
@@ -135,6 +139,7 @@ Score ≥ 70
 - Use ASIN as unique identifier
 - Do not post same product within 24 hours
 - Store last post timestamp per ASIN
+- ASIN deduplication also applied across sources in `ProductDiscoveryService` using `LinkedHashMap.putIfAbsent`
 
 ## Validation Rules
 
@@ -145,7 +150,7 @@ Before posting:
 - image must exist
 - affiliate link must exist
 
-If invalid → discard
+If invalid → discard. Validation runs before price history is recorded to keep the database clean.
 
 ## Telegram Publisher
 
@@ -169,12 +174,14 @@ Product Title
 - No reviews
 - No commentary
 - No extra marketing text
-- Include image if available
+- Include image if available (`sendPhoto`); fall back to `sendMessage` if no image
 
 ## Scheduler
 
-- Runs every 10–15 minutes
-- Executes full pipeline automatically
+- Runs every 10 minutes (`cron: 0 */10 * * * *`)
+- Executes the full pipeline automatically
+- Overlap prevention: uses `AtomicBoolean` — skips run if previous one is still in progress
+- `running` flag always reset in `finally` block
 
 ## Technology Stack
 
@@ -206,15 +213,22 @@ Product Title
 
 ## Architecture
 
-Modular Monolith (SIMPLE). Single Spring Boot application with distinct service classes:
+Modular Monolith (SIMPLE). Single Spring Boot application with distinct classes:
 
-| Service | Responsibility |
-|---|---|
-| `ProductDiscoveryService` | Queries Amazon PA-API using fixed keyword list |
-| `PriceTrackingService` | Stores price snapshots, detects price drops |
-| `ScoringService` | Computes deal score (0–100); threshold ≥ 70 to publish |
-| `ValidationService` | Ensures product has price, image, and affiliate link |
-| `TelegramPublisherService` | Formats and sends messages to Telegram channel |
+| Layer | Class | Responsibility |
+|---|---|---|
+| Source | `ProductSourceClient` | Interface — contract for all product source implementations |
+| Source | `AmazonProductSourceClient` | Queries Amazon PA-API using fixed keyword list |
+| Source | `MockProductSourceClient` | Returns hardcoded products for local testing |
+| Source | `AwinProductSourceClient` | Placeholder — not implemented |
+| Service | `ProductDiscoveryService` | Aggregates all enabled sources, deduplicates by ASIN |
+| Service | `PriceTrackingService` | Upserts products, stores price snapshots, retrieves historical low |
+| Service | `ScoringService` | Computes deal score (0–100); threshold ≥ 70 to publish |
+| Service | `ValidationService` | Ensures product has price, image, and affiliate link |
+| Service | `TelegramPublisherService` | Formats and sends messages to Telegram channel |
+| Scheduler | `DealsPipelineScheduler` | Orchestrates the full pipeline on a cron schedule |
+| Amazon | `AmazonPaApiClient` | Raw PA-API caller: rate limiting, retry, exponential backoff, pagination |
+| Amazon | `AwsV4Signer` | Manual AWS Signature V4 — no SDK dependency |
 
 ## Non-Goals
 
@@ -224,7 +238,7 @@ DO NOT implement:
 - dashboards
 - analytics
 - machine learning
-- multi-retailer support
+- full multi-retailer integrations (Awin/JB Hi-Fi/AliExpress real implementation)
 - event-driven architecture
 - complex scoring systems
 

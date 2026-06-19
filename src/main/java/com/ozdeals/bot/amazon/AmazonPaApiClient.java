@@ -5,17 +5,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ozdeals.bot.dto.DiscoveredProduct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
+@ConditionalOnProperty(name = "sources.amazon.enabled", havingValue = "true")
 @Slf4j
 public class AmazonPaApiClient {
 
@@ -37,10 +41,16 @@ public class AmazonPaApiClient {
     @Value("${amazon.paapi.marketplace}")
     private String marketplace;
 
+    @Value("${amazon.paapi.max-pages:1}")
+    private int maxPages;
+
     private static final String PATH = "/paapi5/searchitems";
+    private static final int MAX_RETRIES = 3;
+    private static final long MIN_INTERVAL_MS = 1000;
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final AtomicLong lastRequestTimeMs = new AtomicLong(0);
 
     public AmazonPaApiClient(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
@@ -48,25 +58,75 @@ public class AmazonPaApiClient {
     }
 
     public List<DiscoveredProduct> searchItems(String keyword) {
-        String body = buildRequestBody(keyword);
-        Map<String, String> signedHeaders = AwsV4Signer.sign(accessKey, secretKey, region, host, PATH, body);
+        List<DiscoveredProduct> all = new ArrayList<>();
+        for (int page = 1; page <= maxPages; page++) {
+            List<DiscoveredProduct> pageResults = searchPage(keyword, page);
+            all.addAll(pageResults);
+            if (pageResults.size() < 10) break; // fewer than full page means no more results
+        }
+        return all;
+    }
 
-        HttpHeaders headers = new HttpHeaders();
-        signedHeaders.forEach(headers::set);
+    private List<DiscoveredProduct> searchPage(String keyword, int page) {
+        int attempt = 0;
+        while (attempt <= MAX_RETRIES) {
+            try {
+                enforceRateLimit();
+                String body = buildRequestBody(keyword, page);
+                Map<String, String> signedHeaders = AwsV4Signer.sign(accessKey, secretKey, region, host, PATH, body);
+                HttpHeaders headers = new HttpHeaders();
+                signedHeaders.forEach(headers::set);
+                HttpEntity<String> entity = new HttpEntity<>(body, headers);
+                String url = "https://" + host + PATH;
+                String response = restTemplate.postForObject(url, entity, String.class);
+                return parseResponse(response);
+            } catch (HttpClientErrorException e) {
+                if (e.getStatusCode().value() == 429 && attempt < MAX_RETRIES) {
+                    attempt++;
+                    log.warn("PA-API throttled for keyword '{}' page {}, retrying ({}/{})", keyword, page, attempt, MAX_RETRIES);
+                    sleepBackoff(attempt);
+                } else {
+                    log.error("PA-API request failed for keyword '{}' page {}: {}", keyword, page, e.getMessage());
+                    return List.of();
+                }
+            } catch (Exception e) {
+                if (attempt < MAX_RETRIES) {
+                    attempt++;
+                    log.warn("PA-API attempt {}/{} failed for keyword '{}' page {}: {}", attempt, MAX_RETRIES, keyword, page, e.getMessage());
+                    sleepBackoff(attempt);
+                } else {
+                    log.error("PA-API request failed after {} attempts for keyword '{}' page {}: {}", MAX_RETRIES + 1, keyword, page, e.getMessage());
+                    return List.of();
+                }
+            }
+        }
+        return List.of();
+    }
 
-        String url = "https://" + host + PATH;
-        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+    private synchronized void enforceRateLimit() {
+        long now = System.currentTimeMillis();
+        long elapsed = now - lastRequestTimeMs.get();
+        if (elapsed < MIN_INTERVAL_MS) {
+            try {
+                Thread.sleep(MIN_INTERVAL_MS - elapsed);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastRequestTimeMs.set(System.currentTimeMillis());
+    }
 
+    private void sleepBackoff(int attempt) {
+        long delay = (long) Math.pow(2, attempt - 1) * 1000L; // 1s, 2s, 4s
+        log.warn("Backing off for {}ms before retry", delay);
         try {
-            String response = restTemplate.postForObject(url, entity, String.class);
-            return parseResponse(response);
-        } catch (Exception e) {
-            log.error("PA-API request failed for keyword '{}': {}", keyword, e.getMessage());
-            return List.of();
+            Thread.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    private String buildRequestBody(String keyword) {
+    private String buildRequestBody(String keyword, int page) {
         return """
                 {
                   "Keywords": "%s",
@@ -83,9 +143,10 @@ public class AmazonPaApiClient {
                     "DetailPageURL"
                   ],
                   "SearchIndex": "All",
-                  "ItemCount": 10
+                  "ItemCount": 10,
+                  "ItemPage": %d
                 }
-                """.formatted(keyword, marketplace, partnerTag);
+                """.formatted(keyword, marketplace, partnerTag, page);
     }
 
     private List<DiscoveredProduct> parseResponse(String json) throws Exception {

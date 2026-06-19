@@ -1,39 +1,38 @@
 package com.ozdeals.bot.service;
 
-import com.ozdeals.bot.amazon.AmazonPaApiClient;
 import com.ozdeals.bot.dto.DiscoveredProduct;
+import com.ozdeals.bot.source.ProductSourceClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
 public class ProductDiscoveryService {
 
-    private static final List<String> KEYWORDS = List.of(
-            "iphone", "samsung", "sony", "headphones", "tv", "laptop",
-            "gaming monitor", "air fryer", "protein", "creatine", "fitness", "smartwatch"
-    );
+    private final List<ProductSourceClient> sources;
 
-    private final AmazonPaApiClient amazonPaApiClient;
-
-    public ProductDiscoveryService(AmazonPaApiClient amazonPaApiClient) {
-        this.amazonPaApiClient = amazonPaApiClient;
+    public ProductDiscoveryService(List<ProductSourceClient> sources) {
+        this.sources = sources;
     }
 
     public List<DiscoveredProduct> discoverAll() {
-        List<DiscoveredProduct> all = new ArrayList<>();
-        for (String keyword : KEYWORDS) {
+        Map<String, DiscoveredProduct> seen = new LinkedHashMap<>();
+        for (ProductSourceClient source : sources) {
             try {
-                List<DiscoveredProduct> products = amazonPaApiClient.searchItems(keyword);
-                all.addAll(products);
-                log.info("Discovered {} products for keyword '{}'", products.size(), keyword);
+                List<DiscoveredProduct> products = source.discoverProducts();
+                for (DiscoveredProduct p : products) {
+                    if (p.getAsin() != null) seen.putIfAbsent(p.getAsin(), p);
+                }
             } catch (Exception e) {
-                log.error("Failed to search keyword '{}': {}", keyword, e.getMessage());
+                log.error("Source {} failed: {}", source.getClass().getSimpleName(), e.getMessage());
             }
         }
-        return all;
+        log.info("Total unique products discovered: {}", seen.size());
+        return new ArrayList<>(seen.values());
     }
 }
