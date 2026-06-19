@@ -242,11 +242,33 @@
 - A failed Telegram delivery now leaves the deal unposted and eligible for retry on the next cycle. If Telegram is intermittently failing, qualifying deals may be published later than expected, but this is strictly safer than the previous behavior of silently dropping them.
 
 ### Pending work
-- `ValidationService` unit tests — next highest-priority testing gap
+- `ValidationService` unit tests — done (see Session 2026-06-19 below)
 - `ProductDiscoveryService` unit tests — ASIN deduplication logic across sources is untested
 - `TelegramPublisherService.buildMessage()` is still private and untestable without restructuring
 - `DealsPipelineScheduler` still holds direct `PostRepository` dependency (deduplication in scheduler, not a service)
 - `TelegramPublisherService` credentials still have no defaults — app fails to start locally without them
 
 ### Next recommended step
-Add unit tests for `ValidationService` — no external dependencies, all cases are straightforward, and validation is the gate that determines which products enter price tracking and scoring.
+Add unit tests for `ProductDiscoveryService` — ASIN deduplication logic across sources is untested.
+
+---
+
+## Session: 2026-06-19 — ValidationService unit tests
+
+### What changed
+
+**ValidationService unit tests (T2)**
+- 12 test cases added in `ValidationServiceTest`
+- Plain JUnit 5, no Spring context, no Mockito — `ValidationService` has no dependencies
+- Covers: fully valid product; null/blank `asin`; null/blank `title`; null/zero/negative `currentPrice`; null/blank `imageUrl`; null/blank `affiliateLink`
+- Note: `DiscoveredProduct` uses `@Builder` without `toBuilder = true` — each test builds the product from scratch
+
+### Files modified
+- `src/test/java/com/ozdeals/bot/service/ValidationServiceTest.java` (new)
+- `PROGRESS.md`
+
+### Test results
+- `ValidationServiceTest`: 12/12 passed
+- `ScoringServiceTest`: 16/16 passed
+- `OzDealsBotApplicationTests`: 1/1 passed
+- Total: 29 tests, 0 failures
