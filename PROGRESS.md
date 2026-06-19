@@ -206,4 +206,47 @@
 - Real Awin/JB Hi-Fi/AliExpress integrations
 - Multi-affiliate production support
 - Microservices, dashboards, analytics, ML, event-driven architecture
-- Unit tests for ScoringService and ValidationService (nice-to-have, not blocking)
+
+---
+
+## Session: 2026-06-19 — Reliability fixes and ScoringService tests
+
+### What changed
+
+**1. Telegram publish reliability fix (R1)**
+- `TelegramPublisherService.publish()` now returns `boolean`
+- `sendPhoto()` and `sendMessage()` return `true` on successful delivery, `false` on any exception
+- `DealsPipelineScheduler` now calls `savePost()` and increments `published` only when `publish()` returns `true`
+- A failed Telegram delivery no longer marks the deal as posted; it will be retried on the next qualifying cycle
+
+**2. HTTP timeouts (M2 / R3)**
+- `AppConfig` now builds `RestTemplate` with `SimpleClientHttpRequestFactory`
+- Connect timeout: 5 seconds
+- Read timeout: 15 seconds
+- Prevents indefinite thread blocking that would permanently deadlock the scheduler
+
+**3. ScoringService unit tests (T1)**
+- 16 test cases added in `ScoringServiceTest`
+- Plain JUnit 5, no Spring context, no Mockito — `ScoringService` has no dependencies
+- Covers: `discountPercent()` null/zero/normal cases; all `discountScore()` tier boundaries (10/20/30/40/50%); `historicalLowScore()` at/above/empty historical low; combined score below/at/above the 70 publish threshold
+
+### Files modified
+- `src/main/java/com/ozdeals/bot/service/TelegramPublisherService.java`
+- `src/main/java/com/ozdeals/bot/scheduler/DealsPipelineScheduler.java`
+- `src/main/java/com/ozdeals/bot/config/AppConfig.java`
+- `src/test/java/com/ozdeals/bot/service/ScoringServiceTest.java` (new)
+- `PROGRESS.md`
+
+### Risks
+- HTTP timeout change affects both Amazon PA-API and Telegram calls, as they share the same `RestTemplate` bean. The 15-second read timeout is generous for Telegram but may be short under PA-API throttle-and-retry scenarios; the retry backoff delays (1s/2s/4s) are unaffected since they happen between requests, not within one.
+- A failed Telegram delivery now leaves the deal unposted and eligible for retry on the next cycle. If Telegram is intermittently failing, qualifying deals may be published later than expected, but this is strictly safer than the previous behavior of silently dropping them.
+
+### Pending work
+- `ValidationService` unit tests — next highest-priority testing gap
+- `ProductDiscoveryService` unit tests — ASIN deduplication logic across sources is untested
+- `TelegramPublisherService.buildMessage()` is still private and untestable without restructuring
+- `DealsPipelineScheduler` still holds direct `PostRepository` dependency (deduplication in scheduler, not a service)
+- `TelegramPublisherService` credentials still have no defaults — app fails to start locally without them
+
+### Next recommended step
+Add unit tests for `ValidationService` — no external dependencies, all cases are straightforward, and validation is the gate that determines which products enter price tracking and scoring.

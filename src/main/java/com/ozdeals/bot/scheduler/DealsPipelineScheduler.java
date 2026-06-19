@@ -68,9 +68,10 @@ public class DealsPipelineScheduler {
                     if (score < 70) continue;
 
                     int discountPercent = scoringService.discountPercent(product);
-                    telegramPublisherService.publish(product, discountPercent);
-                    savePost(product);
-                    published++;
+                    if (telegramPublisherService.publish(product, discountPercent)) {
+                        savePost(product);
+                        published++;
+                    }
 
                 } catch (Exception e) {
                     log.error("Error processing ASIN {}: {}", product.getAsin(), e.getMessage());

@@ -24,13 +24,13 @@ public class TelegramPublisherService {
         this.restTemplate = restTemplate;
     }
 
-    public void publish(DiscoveredProduct product, int discountPercent) {
+    public boolean publish(DiscoveredProduct product, int discountPercent) {
         String caption = buildMessage(product, discountPercent);
 
         if (product.getImageUrl() != null && !product.getImageUrl().isBlank()) {
-            sendPhoto(product.getImageUrl(), caption);
+            return sendPhoto(product.getImageUrl(), caption);
         } else {
-            sendMessage(caption);
+            return sendMessage(caption);
         }
     }
 
@@ -46,7 +46,7 @@ public class TelegramPublisherService {
         return msg.toString();
     }
 
-    private void sendPhoto(String photoUrl, String caption) {
+    private boolean sendPhoto(String photoUrl, String caption) {
         String url = "https://api.telegram.org/bot" + botToken + "/sendPhoto";
         try {
             restTemplate.postForEntity(url, Map.of(
@@ -55,12 +55,14 @@ public class TelegramPublisherService {
                     "caption", caption
             ), String.class);
             log.info("Published deal with photo to Telegram");
+            return true;
         } catch (Exception e) {
             log.error("Failed to send photo to Telegram: {}", e.getMessage());
+            return false;
         }
     }
 
-    private void sendMessage(String text) {
+    private boolean sendMessage(String text) {
         String url = "https://api.telegram.org/bot" + botToken + "/sendMessage";
         try {
             restTemplate.postForEntity(url, Map.of(
@@ -68,8 +70,10 @@ public class TelegramPublisherService {
                     "text", text
             ), String.class);
             log.info("Published deal (text only) to Telegram");
+            return true;
         } catch (Exception e) {
             log.error("Failed to send message to Telegram: {}", e.getMessage());
+            return false;
         }
     }
 }
