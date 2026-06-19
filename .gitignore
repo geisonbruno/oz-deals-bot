@@ -2,7 +2,19 @@ target/
 *.jar
 *.war
 *.class
+
 .idea/
 *.iml
+
 .env
 application-local.properties
+
+# Claude working files
+PROGRESS.md
+REVIEW.md
+TODO.md
+NOTES.md
+
+.claude/plans/
+.claude/reviews/
+.claude/tmp/
