@@ -19,31 +19,21 @@ public class TelegramPublisherService {
     private String channelId;
 
     private final RestTemplate restTemplate;
+    private final TelegramMessageFormatter messageFormatter;
 
-    public TelegramPublisherService(RestTemplate restTemplate) {
+    public TelegramPublisherService(RestTemplate restTemplate, TelegramMessageFormatter messageFormatter) {
         this.restTemplate = restTemplate;
+        this.messageFormatter = messageFormatter;
     }
 
     public boolean publish(DiscoveredProduct product, int discountPercent) {
-        String caption = buildMessage(product, discountPercent);
+        String caption = messageFormatter.format(product, discountPercent);
 
         if (product.getImageUrl() != null && !product.getImageUrl().isBlank()) {
             return sendPhoto(product.getImageUrl(), caption);
         } else {
             return sendMessage(caption);
         }
-    }
-
-    private String buildMessage(DiscoveredProduct product, int discountPercent) {
-        StringBuilder msg = new StringBuilder();
-        msg.append("🔥 ").append(discountPercent).append("% OFF\n\n");
-        msg.append(product.getTitle()).append("\n\n");
-        msg.append("💰 Now: $").append(product.getCurrentPrice()).append("\n");
-        if (product.getListPrice() != null) {
-            msg.append("💸 Was: $").append(product.getListPrice()).append("\n");
-        }
-        msg.append("\n👉 ").append(product.getAffiliateLink());
-        return msg.toString();
     }
 
     private boolean sendPhoto(String photoUrl, String caption) {
