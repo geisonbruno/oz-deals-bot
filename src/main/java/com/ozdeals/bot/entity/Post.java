@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "posts", indexes = {
-        @Index(name = "idx_post_asin", columnList = "asin"),
+        @Index(name = "idx_post_product_id", columnList = "product_id"),
         @Index(name = "idx_post_posted_at", columnList = "posted_at")
 })
 @Data
@@ -21,7 +21,8 @@ public class Post {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String asin;
+    @Column(name = "product_id")
+    private Long productId;
     private BigDecimal price;
     private LocalDateTime postedAt;
     private String messageHash;

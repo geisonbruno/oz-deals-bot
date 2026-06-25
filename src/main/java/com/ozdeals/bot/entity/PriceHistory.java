@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "price_history", indexes = {
-        @Index(name = "idx_price_history_asin", columnList = "asin")
+        @Index(name = "idx_price_history_product_id", columnList = "product_id")
 })
 @Data
 @NoArgsConstructor
@@ -20,7 +20,8 @@ public class PriceHistory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String asin;
+    @Column(name = "product_id")
+    private Long productId;
     private BigDecimal price;
     private LocalDateTime timestamp;
 }

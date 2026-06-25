@@ -9,7 +9,8 @@ import java.math.BigDecimal;
 public class ValidationService {
 
     public boolean isValid(DiscoveredProduct product) {
-        return hasValue(product.getAsin())
+        return product.getSource() != null
+                && hasValue(product.getExternalId())
                 && hasValue(product.getTitle())
                 && product.getCurrentPrice() != null && product.getCurrentPrice().compareTo(BigDecimal.ZERO) > 0
                 && hasValue(product.getImageUrl())

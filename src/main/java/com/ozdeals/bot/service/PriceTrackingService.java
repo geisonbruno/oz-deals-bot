@@ -22,29 +22,29 @@ public class PriceTrackingService {
         this.priceHistoryRepository = priceHistoryRepository;
     }
 
-    public void saveProduct(DiscoveredProduct discovered) {
-        if (!productRepository.existsById(discovered.getAsin())) {
-            productRepository.save(Product.builder()
-                    .asin(discovered.getAsin())
-                    .title(discovered.getTitle())
-                    .brand(discovered.getBrand())
-                    .category(discovered.getCategory())
-                    .imageUrl(discovered.getImageUrl())
-                    .createdAt(LocalDateTime.now())
-                    .build());
-        }
+    public Product saveProduct(DiscoveredProduct discovered) {
+        return productRepository.findBySourceAndExternalId(discovered.getSource(), discovered.getExternalId())
+                .orElseGet(() -> productRepository.save(Product.builder()
+                        .source(discovered.getSource())
+                        .externalId(discovered.getExternalId())
+                        .title(discovered.getTitle())
+                        .brand(discovered.getBrand())
+                        .category(discovered.getCategory())
+                        .imageUrl(discovered.getImageUrl())
+                        .createdAt(LocalDateTime.now())
+                        .build()));
     }
 
-    public void recordPrice(DiscoveredProduct discovered) {
-        if (discovered.getCurrentPrice() == null) return;
+    public void recordPrice(Long productId, BigDecimal price) {
+        if (price == null) return;
         priceHistoryRepository.save(PriceHistory.builder()
-                .asin(discovered.getAsin())
-                .price(discovered.getCurrentPrice())
+                .productId(productId)
+                .price(price)
                 .timestamp(LocalDateTime.now())
                 .build());
     }
 
-    public Optional<BigDecimal> getHistoricalLow(String asin) {
-        return priceHistoryRepository.findMinPriceByAsin(asin);
+    public Optional<BigDecimal> getHistoricalLow(Long productId) {
+        return priceHistoryRepository.findMinPriceByProductId(productId);
     }
 }

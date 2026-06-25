@@ -1,5 +1,6 @@
 package com.ozdeals.bot.service;
 
+import com.ozdeals.bot.ProductSource;
 import com.ozdeals.bot.dto.DiscoveredProduct;
 import org.junit.jupiter.api.Test;
 
@@ -121,7 +122,8 @@ class ScoringServiceTest {
 
     private DiscoveredProduct product(BigDecimal currentPrice, BigDecimal listPrice) {
         return DiscoveredProduct.builder()
-                .asin("TEST-ASIN")
+                .source(ProductSource.MOCK)
+                .externalId("TEST-001")
                 .currentPrice(currentPrice)
                 .listPrice(listPrice)
                 .build();

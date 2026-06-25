@@ -2,6 +2,7 @@ package com.ozdeals.bot.scheduler;
 
 import com.ozdeals.bot.dto.DiscoveredProduct;
 import com.ozdeals.bot.entity.Post;
+import com.ozdeals.bot.entity.Product;
 import com.ozdeals.bot.repository.PostRepository;
 import com.ozdeals.bot.service.*;
 import lombok.extern.slf4j.Slf4j;
@@ -52,29 +53,29 @@ public class DealsPipelineScheduler {
             List<DiscoveredProduct> products = productDiscoveryService.discoverAll();
             int published = 0;
 
-            for (DiscoveredProduct product : products) {
+            for (DiscoveredProduct discovered : products) {
                 try {
-                    priceTrackingService.saveProduct(product);
+                    if (!validationService.isValid(discovered)) continue;
 
-                    if (!validationService.isValid(product)) continue;
+                    Product product = priceTrackingService.saveProduct(discovered);
 
-                    priceTrackingService.recordPrice(product);
+                    priceTrackingService.recordPrice(product.getId(), discovered.getCurrentPrice());
 
-                    if (wasRecentlyPosted(product.getAsin())) continue;
+                    if (wasRecentlyPosted(product.getId())) continue;
 
-                    Optional<BigDecimal> historicalLow = priceTrackingService.getHistoricalLow(product.getAsin());
-                    int score = scoringService.score(product, historicalLow);
+                    Optional<BigDecimal> historicalLow = priceTrackingService.getHistoricalLow(product.getId());
+                    int score = scoringService.score(discovered, historicalLow);
 
                     if (score < 70) continue;
 
-                    int discountPercent = scoringService.discountPercent(product);
-                    if (telegramPublisherService.publish(product, discountPercent)) {
-                        savePost(product);
+                    int discountPercent = scoringService.discountPercent(discovered);
+                    if (telegramPublisherService.publish(discovered, discountPercent)) {
+                        savePost(product, discovered);
                         published++;
                     }
 
                 } catch (Exception e) {
-                    log.error("Error processing ASIN {}: {}", product.getAsin(), e.getMessage());
+                    log.error("Error processing [{}:{}]: {}", discovered.getSource(), discovered.getExternalId(), e.getMessage());
                 }
             }
 
@@ -84,16 +85,16 @@ public class DealsPipelineScheduler {
         }
     }
 
-    private boolean wasRecentlyPosted(String asin) {
-        return postRepository.findTopByAsinAndPostedAtAfter(asin, LocalDateTime.now().minusHours(24)).isPresent();
+    private boolean wasRecentlyPosted(Long productId) {
+        return postRepository.findTopByProductIdAndPostedAtAfter(productId, LocalDateTime.now().minusHours(24)).isPresent();
     }
 
-    private void savePost(DiscoveredProduct product) {
+    private void savePost(Product product, DiscoveredProduct discovered) {
         postRepository.save(Post.builder()
-                .asin(product.getAsin())
-                .price(product.getCurrentPrice())
+                .productId(product.getId())
+                .price(discovered.getCurrentPrice())
                 .postedAt(LocalDateTime.now())
-                .messageHash(product.getAsin() + "_" + product.getCurrentPrice())
+                .messageHash(product.getSource() + "_" + product.getExternalId() + "_" + discovered.getCurrentPrice())
                 .build());
     }
 }

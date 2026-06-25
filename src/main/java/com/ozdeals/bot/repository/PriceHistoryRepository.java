@@ -10,6 +10,6 @@ import java.util.Optional;
 
 public interface PriceHistoryRepository extends JpaRepository<PriceHistory, Long> {
 
-    @Query("SELECT MIN(ph.price) FROM PriceHistory ph WHERE ph.asin = :asin")
-    Optional<BigDecimal> findMinPriceByAsin(@Param("asin") String asin);
+    @Query("SELECT MIN(ph.price) FROM PriceHistory ph WHERE ph.productId = :productId")
+    Optional<BigDecimal> findMinPriceByProductId(@Param("productId") Long productId);
 }

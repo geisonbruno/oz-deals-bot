@@ -2,6 +2,7 @@ package com.ozdeals.bot.amazon;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ozdeals.bot.ProductSource;
 import com.ozdeals.bot.dto.DiscoveredProduct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -191,7 +192,8 @@ public class AmazonPaApiClient {
         }
 
         return DiscoveredProduct.builder()
-                .asin(asin)
+                .source(ProductSource.AMAZON)
+                .externalId(asin)
                 .title(title)
                 .brand(brand)
                 .category(category)

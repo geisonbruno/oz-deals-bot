@@ -26,7 +26,12 @@ public class ProductDiscoveryService {
             try {
                 List<DiscoveredProduct> products = source.discoverProducts();
                 for (DiscoveredProduct p : products) {
-                    if (p.getAsin() != null) seen.putIfAbsent(p.getAsin(), p);
+                    if (p.getSource() == null || p.getExternalId() == null || p.getExternalId().isBlank()) {
+                        log.warn("Skipping product with null source or blank externalId from {}", source.getClass().getSimpleName());
+                        continue;
+                    }
+                    String key = p.getSource() + ":" + p.getExternalId();
+                    seen.putIfAbsent(key, p);
                 }
             } catch (Exception e) {
                 log.error("Source {} failed: {}", source.getClass().getSimpleName(), e.getMessage());

@@ -1,5 +1,6 @@
 package com.ozdeals.bot.source;
 
+import com.ozdeals.bot.ProductSource;
 import com.ozdeals.bot.dto.DiscoveredProduct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,7 +19,8 @@ public class MockProductSourceClient implements ProductSourceClient {
         log.info("[Mock] Returning mock products for local testing");
         return List.of(
                 DiscoveredProduct.builder()
-                        .asin("B09G3HRMVB")
+                        .source(ProductSource.MOCK)
+                        .externalId("MOCK_IPHONE_13")
                         .title("Apple iPhone 13 128GB Blue")
                         .brand("Apple")
                         .category("Smartphones")
@@ -28,7 +30,8 @@ public class MockProductSourceClient implements ProductSourceClient {
                         .listPrice(new BigDecimal("1399.00"))
                         .build(),
                 DiscoveredProduct.builder()
-                        .asin("B08N5WRWNW")
+                        .source(ProductSource.MOCK)
+                        .externalId("MOCK_SONY_XM4")
                         .title("Sony WH-1000XM4 Wireless Noise Cancelling Headphones")
                         .brand("Sony")
                         .category("Headphones")
@@ -38,7 +41,8 @@ public class MockProductSourceClient implements ProductSourceClient {
                         .listPrice(new BigDecimal("549.00"))
                         .build(),
                 DiscoveredProduct.builder()
-                        .asin("B07ZPKN6YR")
+                        .source(ProductSource.MOCK)
+                        .externalId("MOCK_SAMSUNG_TV")
                         .title("Samsung 65-Inch 4K QLED TV")
                         .brand("Samsung")
                         .category("Televisions")

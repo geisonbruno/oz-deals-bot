@@ -1,5 +1,6 @@
 package com.ozdeals.bot.dto;
 
+import com.ozdeals.bot.ProductSource;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,7 +10,8 @@ import java.math.BigDecimal;
 @Builder
 public class DiscoveredProduct {
 
-    private String asin;
+    private ProductSource source;
+    private String externalId;
     private String title;
     private String brand;
     private String category;

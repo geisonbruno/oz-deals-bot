@@ -8,5 +8,5 @@ import java.util.Optional;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
-    Optional<Post> findTopByAsinAndPostedAtAfter(String asin, LocalDateTime since);
+    Optional<Post> findTopByProductIdAndPostedAtAfter(Long productId, LocalDateTime since);
 }
