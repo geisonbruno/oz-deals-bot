@@ -84,6 +84,15 @@ class ProductDiscoveryServiceTest {
     }
 
     @Test
+    void discoverAll_noSources_returnsEmptyList() {
+        ProductDiscoveryService service = serviceWith();
+
+        List<DiscoveredProduct> result = service.discoverAll();
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void discoverAll_blankExternalId_skipped() {
         DiscoveredProduct invalid = DiscoveredProduct.builder()
                 .source(ProductSource.MOCK)
